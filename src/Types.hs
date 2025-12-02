@@ -1,0 +1,73 @@
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings #-}
+
+module Types where
+
+import Data.Text (Text)
+import GHC.Generics (Generic)
+
+-- | Data type representing a TfL Line
+-- Based on https://api.tfl.gov.uk/Line/Mode/tube/Status
+data Line = Line
+    { id :: Text
+    , name :: Text
+    , modeName :: Text
+    , created :: Maybe Text
+    , modified :: Maybe Text
+    , lineStatuses :: [LineStatus]
+    } deriving (Show, Generic)
+
+-- | Data type representing the status of a line
+data LineStatus = LineStatus
+    { statusId :: Int
+    , statusSeverity :: Int
+    , statusSeverityDescription :: Text
+    , reason :: Maybe Text
+    } deriving (Show, Generic)
+
+-- | Data type representing a Station (StopPoint)
+data Station = Station
+    { stationId :: Text
+    , commonName :: Text
+    , lat :: Double
+    , lon :: Double
+    } deriving (Show, Generic)
+
+-- | Data type representing a Journey Response
+data JourneyResponse = JourneyResponse
+    { journeys :: [Journey]
+    } deriving (Show, Generic)
+
+-- | Data type representing a single Journey option
+data Journey = Journey
+    { startDateTime :: Text
+    , duration :: Int
+    , arrivalDateTime :: Text
+    , legs :: [Leg]
+    } deriving (Show, Generic)
+
+-- | Data type representing a Leg of a journey
+data Leg = Leg
+    { legDuration :: Int
+    , instruction :: Instruction
+    , mode :: Mode
+    , departurePoint :: Point
+    , arrivalPoint :: Point
+    } deriving (Show, Generic)
+
+-- | Data type representing an instruction for a leg
+data Instruction = Instruction
+    { summary :: Text
+    , detailed :: Maybe Text
+    } deriving (Show, Generic)
+
+-- | Data type representing a transport mode
+data Mode = Mode
+    { modeId :: Text
+    , mName :: Text
+    } deriving (Show, Generic)
+
+-- | Data type representing a point (departure/arrival)
+data Point = Point
+    { pointName :: Text
+    } deriving (Show, Generic)
