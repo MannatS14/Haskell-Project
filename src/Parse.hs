@@ -1,3 +1,14 @@
+{-|
+Module      : Parse
+Description : JSON parsing module
+Copyright   : (c) Author name here, 2025
+License     : BSD3
+Maintainer  : example@example.com
+Stability   : experimental
+Portability : POSIX
+
+This module handles parsing of JSON responses from the TfL API into Haskell data types.
+-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
 
