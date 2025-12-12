@@ -1,5 +1,6 @@
 {-|
 Module      : Fetch
+<<<<<<< HEAD
 Description : API interaction module for TfL API
 Copyright   : (c) Group X, 2025
 License     : BSD3
@@ -7,6 +8,9 @@ Maintainer  : example@example.com
 Stability   : experimental
 Portability : POSIX
 
+=======
+Description : API interaction module
+>>>>>>> nishant-pr-branch
 This module handles all HTTP requests to the Transport for London (TfL) API,
 including fetching line statuses, stations, and journey plans.
 It uses 'http-conduit' for efficient request handling.
