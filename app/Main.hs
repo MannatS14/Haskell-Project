@@ -1,17 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-|
-Module      : Main
-Description : Main entry point for the TfL Journey Planner application
-Copyright   : (c) Group X, 2025
-License     : BSD3
-Maintainer  : example@example.com
-Stability   : experimental
-Portability : POSIX
-
-This module handles command-line argument parsing and dispatches execution to
-the appropriate modules (Database, Fetch, Parse). It provides the CLI interface
-for creating the database, loading data, querying lines, and planning journeys.
--}
 module Main where
 
 import System.Environment (getArgs)
@@ -31,16 +18,6 @@ import Parse (parseLines, writeJson, parseStations, parseJourney)
 import Database (initialiseDB, saveData, retrieveData, saveStations, searchStations, getSevereDelays, queryLinesBySeverity)
 import Types (Line(..), Station(..), LineStatus(..), JourneyResponse(..), Journey(..), Leg(..), Instruction(..), Mode(..), Point(..))
 
--- | Main entry point for the application.
--- Parses command line arguments and executes the corresponding action:
---
--- * @create@: Initialises the SQLite database.
--- * @loaddata@: Downloads data from TfL API and saves it to the database.
--- * @dumpdata@: Exports database content to a JSON file.
--- * @query \<severity\>@: Lists lines with the specified severity score.
--- * @severe-delays@: Lists lines with severe delays.
--- * @plan-journey@: Interactive journey planning wizard.
--- * @search \<name\>@: Searches for stations by name.
 main :: IO ()
 main = do
     args <- getArgs
@@ -73,86 +50,142 @@ main = do
                                 
                     putStrLn "Data saved."
 
-        ["dumpdata"] -> withErrorHandling "Error dumping data" $ do
-            putStrLn "Dumping data to data.json..."
-            lines <- retrieveData
-            writeJson "data.json" lines
-            putStrLn "Data dumped."
+-- | Dump database content to JSON file
+handleDumpData :: IO ()
+handleDumpData = withErrorHandling "Getting Error while dumping data" $ do
+    putStrLn "Dumping data to data.json..."
+    lines <- retrieveData
+    writeJson "data.json" lines
+    putStrLn "Data dumped."
+
+-- | Filter lines by status severity
+handleFilterStatus :: [String] -> IO ()
+handleFilterStatus qArgs = do
+    severity <- case qArgs of
+        [severityStr] -> case readMaybe severityStr of
+            Just s -> return $ Just s
+            Nothing -> do
+                putStrLn "Invalid severity code. Please provide an integer."
+                return Nothing
+        [] -> showFilterMenu
+        _ -> do
+             putStrLn "Usage: stack run -- filter-status [severity_code]"
+             return Nothing
+
+    case severity of
+        Just sev -> do
+            results <- queryLinesBySeverity sev
+            if null results
+                then putStrLn $ "No lines found with severity " ++ show sev ++ "."
+                else do
+                    putStrLn $ "Lines with severity " ++ show sev ++ ":"
+                    mapM_ (\(name, s) -> putStrLn $ "  - " ++ T.unpack name ++ ": " ++ show (Types.statusSeverityDescription s) ++ " (" ++ show (severityReason s) ++ ")") results
+        Nothing -> return ()
+  where
+    severityReason s = maybe "No Reason" Prelude.id (Types.reason s)
+
+    showFilterMenu :: IO (Maybe Int)
+    showFilterMenu = do
+        putStrLn "Select a status to filter by:"
+        putStrLn "1. Good Service (10)"
+        putStrLn "2. Minor Delays (9)"
+        putStrLn "3. Severe Delays (6)"
+        putStrLn "4. Part Closure (5)"
+        putStrLn "5. Planned Closure (4)"
+        putStrLn "6. Service Closed (20)"
+        putStrLn "7. Enter Custom Code"
+        putStr "Selection: "
+        hFlush stdout
+        input <- getLine
+        case input of
+            "1" -> return $ Just 10
+            "2" -> return $ Just 9
+            "3" -> return $ Just 6
+            "4" -> return $ Just 5
+            "5" -> return $ Just 4
+            "6" -> return $ Just 20
+            "7" -> do
+                putStr "Enter severity code: "
+                hFlush stdout
+                code <- getLine
+                case readMaybe code of
+                    Just c -> return $ Just c
+                    Nothing -> do
+                        putStrLn "Invalid code."
+                        return Nothing
+            _ -> do
+                putStrLn "Invalid selection."
+                return Nothing
+
+-- | Check for severe delays
+handleSevereDelays :: IO ()
+handleSevereDelays = withErrorHandling "Getting Error while checking delays" $ do
+    putStrLn "Checking for severe delays..."
+    delays <- getSevereDelays
+    if null delays
+        then putStrLn "There is no severe delays found.The service is good on all lines!"
+        else mapM_ (\s -> putStrLn $ show (Types.statusSeverityDescription s) ++ ": " ++ show (Types.reason s)) delays
+
+-- | Search for a station by name
+handleSearch :: String -> IO ()
+handleSearch queryStr = withErrorHandling "Getting Error while searching stations" $ do
+    putStrLn $ "Searching for stations matching: " ++ queryStr
+    results <- searchStations queryStr
+    mapM_ (\s -> putStrLn $ show (Types.commonName s) ++ " (" ++ show (Types.stationId s) ++ ")") results
+
+-- | Interactive journey planner
+handlePlanJourney :: IO ()
+handlePlanJourney = withErrorHandling "Getting Error while planning journey" $ do
+    -- 1. Get Start Station
+    putStr "From (or 'exit' to quit): "
+    hFlush stdout
+    fromInput <- getLine
+    checkExit fromInput
+    from <- resolveStation fromInput
+    
+    -- 2. Get Destination Station
+    putStr "To (or 'exit' to quit): "
+    hFlush stdout
+    toInput <- getLine
+    checkExit toInput
+    to <- resolveStation toInput
+    
+    -- 3. Get User Preferences
+    modes <- selectModes
+    preference <- selectPreference
+    
+    -- 4. Fetch and Display Results
+    putStrLn "Fetching journey options..."
+    json <- fetchJourney from to modes preference
+    case parseJourney json of
+        Left err -> putStrLn $ "Getting Error while parsing journey data: " ++ err
+        Right (JourneyResponse journeys) -> do
+            let sortedJourneys = sortJourneys preference journeys
+            putStrLn $ "Found " ++ show (length sortedJourneys) ++ " options:--"
             
-        ("query":qArgs) -> withErrorHandling "Error running query" $ do
-            case qArgs of
-                [severityStr] -> case readMaybe severityStr of
-                    Just severity -> do
-                        putStrLn $ "Searching for lines with severity status: " ++ show severity
-                        results <- Database.queryLinesBySeverity severity
-                        if null results
-                            then putStrLn "No lines found with that severity."
-                            else mapM_ (\s -> putStrLn $ "Line Status ID: " ++ show (Types.statusId s) ++ ", Description: " ++ show (Types.statusSeverityDescription s) ++ ", Reason: " ++ show (Types.reason s)) results
-                    Nothing -> putStrLn "Invalid severity. Please provide an integer (e.g., 10 for Good Service)."
-                _ -> putStrLn "Usage: stack run -- query <severity_score>"
-
-        ["severe-delays"] -> withErrorHandling "Error checking delays" $ do
-            putStrLn "Checking for severe delays..."
-            delays <- getSevereDelays
-            if null delays
-                then putStrLn "No severe delays found. Good Service on all lines!"
-                else mapM_ (\s -> putStrLn $ show (Types.statusSeverityDescription s) ++ ": " ++ show (Types.reason s)) delays
-
-        ["search", queryStr] -> withErrorHandling "Error searching stations" $ do
-            putStrLn $ "Searching for stations matching: " ++ queryStr
-            results <- searchStations queryStr
-            mapM_ (\s -> putStrLn $ show (Types.commonName s) ++ " (" ++ show (Types.stationId s) ++ ")") results
-
-        ["plan-journey"] -> withErrorHandling "Error planning journey" $ do
-            putStr "From (or 'exit' to quit): "
+            -- Display options
+            forM_ (zip [1..] sortedJourneys) $ \(i, journey) -> do
+                let modes = map (Types.mName . Types.mode) (Types.legs journey)
+                let modeStr = T.intercalate (T.pack ", ") modes
+                putStrLn $ show i ++ ". Duration: " ++ show (Types.duration journey) ++ " min (" ++ T.unpack modeStr ++ ")"
+                putStrLn $ "   Start: " ++ show (Types.startDateTime journey) ++ ", Arrival: " ++ show (Types.arrivalDateTime journey)
+            
+            -- 5. User Selection for Details
+            putStr "Select an option (number) or 'exit': "
             hFlush stdout
-            fromInput <- getLine
-            checkExit fromInput
-            from <- resolveStation fromInput
-            
-            putStr "To (or 'exit' to quit): "
-            hFlush stdout
-            toInput <- getLine
-            checkExit toInput
-            to <- resolveStation toInput
-            
-            modes <- selectModes
-            preference <- selectPreference
-            
-            putStrLn "Fetching journey options..."
-            json <- fetchJourney from to modes preference
-            case parseJourney json of
-                Left err -> putStrLn $ "Error parsing journey data: " ++ err
-                Right (JourneyResponse journeys) -> do
-                    let sortedJourneys = sortJourneys preference journeys
-                    putStrLn $ "Found " ++ show (length sortedJourneys) ++ " options:"
-                    forM_ (zip [1..] sortedJourneys) $ \(i, journey) -> do
-                        let modes = map (Types.mName . Types.mode) (Types.legs journey)
-                        let modeStr = T.intercalate (T.pack ", ") modes
-                        putStrLn $ show i ++ ". Duration: " ++ show (Types.duration journey) ++ " min (" ++ T.unpack modeStr ++ ")"
-                        putStrLn $ "   Start: " ++ show (Types.startDateTime journey) ++ ", Arrival: " ++ show (Types.arrivalDateTime journey)
-                    
-                    putStr "Select an option (number) or 'exit': "
-                    hFlush stdout
-                    selection <- getLine
-                    checkExit selection
-                    case readMaybe selection of
-                        Just n | n > 0 && n <= length sortedJourneys -> do
-                            let selectedJourney = sortedJourneys !! (n - 1)
-                            putStrLn "Journey Details:"
-                            forM_ (Types.legs selectedJourney) $ \leg -> do
-                                putStrLn $ "  - " ++ show (Types.legDuration leg) ++ " min (" ++ show (Types.mName $ Types.mode leg) ++ ")"
-                                putStrLn $ "    From: " ++ show (Types.pointName $ Types.departurePoint leg)
-                                putStrLn $ "    To:   " ++ show (Types.pointName $ Types.arrivalPoint leg)
-                                putStrLn $ "    " ++ show (Types.summary $ Types.instruction leg)
-                        _ -> putStrLn "Invalid selection."
+            selection <- getLine
+            checkExit selection
+            case readMaybe selection of
+                Just n | n > 0 && n <= length sortedJourneys -> do
+                    let selectedJourney = sortedJourneys !! (n - 1)
+                    putStrLn "Journey Details:"
+                    forM_ (Types.legs selectedJourney) $ \leg -> do
+                        putStrLn $ "  - " ++ show (Types.legDuration leg) ++ " min (" ++ show (Types.mName $ Types.mode leg) ++ ")"
+                        putStrLn $ "    From: " ++ show (Types.pointName $ Types.departurePoint leg)
+                        putStrLn $ "    To:   " ++ show (Types.pointName $ Types.arrivalPoint leg)
+                        putStrLn $ "    " ++ show (Types.summary $ Types.instruction leg)
+                _ -> putStrLn "Invalid selection."
 
-        _ -> putStrLn "Usage: stack run -- [create|loaddata|dumpdata|query <args>|plan-journey]"
-
--- | Wrapper for error handling.
--- Catches generic exceptions during IO actions and prints user-friendly error messages.
--- Handles specific cases like "ExitSuccess" (clean exit), "HttpExceptionRequest" (network issues),
--- and SQLite errors.
 withErrorHandling :: String -> IO () -> IO ()
 withErrorHandling msg action = catch action handler
   where

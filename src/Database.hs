@@ -1,15 +1,8 @@
 {-|
 Module      : Database
 Description : SQLite database interaction module
-Copyright   : (c) Group X, 2025
-License     : BSD3
-Maintainer  : example@example.com
-Stability   : experimental
-Portability : POSIX
-
 This module manages the local SQLite database, including creating tables,
 saving data, and querying stations and delays.
-It implements the schema for lines, statuses, and stations.
 -}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -21,21 +14,19 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 -- | Initialize the database and create tables
--- Creates 'lines', 'statuses', 'stations', and 'line_stations' tables if they don't exist.
 initialiseDB :: IO ()
 initialiseDB = do
     conn <- open "tfl.db"
     execute_ conn "CREATE TABLE IF NOT EXISTS lines (id TEXT PRIMARY KEY, name TEXT, modeName TEXT, statusSeverityDescription TEXT)"
     -- We are simplifying for now, just storing main line info and current status desc
-    -- In a real app we might want a separate table for statuses with foreign key
-    -- We remove PRIMARY KEY from id because it's not unique across lines (e.g. 0)
+    -- In a real app we need a separate table for statuses with foreign key
+    -- We need to remove PRIMARY KEY from id because it's not unique across lines (e.g. 0)
     execute_ conn "CREATE TABLE IF NOT EXISTS statuses (id INTEGER, lineId TEXT, severity INTEGER, description TEXT, reason TEXT, FOREIGN KEY(lineId) REFERENCES lines(id))"
     execute_ conn "CREATE TABLE IF NOT EXISTS stations (id TEXT PRIMARY KEY, commonName TEXT, lat REAL, lon REAL)"
     execute_ conn "CREATE TABLE IF NOT EXISTS line_stations (lineId TEXT, stationId TEXT, FOREIGN KEY(lineId) REFERENCES lines(id), FOREIGN KEY(stationId) REFERENCES stations(id))"
     close conn
 
 -- | Save data to the database
--- Clears existing 'lines' and 'statuses' tables and inserts new data.
 saveData :: [Line] -> IO ()
 saveData lines = do
     conn <- open "tfl.db"
@@ -44,21 +35,18 @@ saveData lines = do
     -- Let's clear for simplicity to avoid duplicates if we run it multiple times, or use INSERT OR REPLACE.
     execute_ conn "DELETE FROM statuses"
     execute_ conn "DELETE FROM lines"
-    -- We don't delete stations here because they might be shared, but for simplicity we could.
-    -- Or we just ignore duplicates.
+  
     
     mapM_ (insertLine conn) lines
     close conn
 
 -- | Save stations to the database
--- Associates a list of stations with a specific line ID.
 saveStations :: Text -> [Station] -> IO ()
 saveStations lineId stations = do
     conn <- open "tfl.db"
     mapM_ (insertStation conn lineId) stations
     close conn
 
--- | Helper function to insert a single line and its statuses
 insertLine :: Connection -> Line -> IO ()
 insertLine conn line = do
     execute conn "INSERT INTO lines (id, name, modeName, statusSeverityDescription) VALUES (?, ?, ?, ?)"
@@ -72,13 +60,11 @@ insertLine conn line = do
         (s:_) -> Types.statusSeverityDescription s
         []    -> "Unknown"
 
--- | Helper function to insert a status record
 insertStatus :: Connection -> Text -> LineStatus -> IO ()
 insertStatus conn lineId status = do
     execute conn "INSERT INTO statuses (id, lineId, severity, description, reason) VALUES (?, ?, ?, ?, ?)"
         (Types.statusId status, lineId, Types.statusSeverity status, Types.statusSeverityDescription status, Types.reason status)
 
--- | Helper function to insert a station and its relationship to the line
 insertStation :: Connection -> Text -> Station -> IO ()
 insertStation conn lineId station = do
     execute conn "INSERT OR IGNORE INTO stations (id, commonName, lat, lon) VALUES (?, ?, ?, ?)"
@@ -86,8 +72,7 @@ insertStation conn lineId station = do
     execute conn "INSERT OR IGNORE INTO line_stations (lineId, stationId) VALUES (?, ?)"
         (lineId, Types.stationId station)
 
--- | Search stations by name
--- Uses SQL LIKE pattern matching to find matching stations.
+-- | Searching stations by name
 searchStations :: String -> IO [Station]
 searchStations queryStr = do
     conn <- open "tfl.db"
@@ -95,8 +80,7 @@ searchStations queryStr = do
     close conn
     return $ map (\(sid, name, lat, lon) -> Station sid name lat lon) results
 
--- | Get lines with severe delays
--- Returns a list of LineStatuses where severity is less than 10 (Good Service).
+-- | Get lines with severe delays (severity < 10, assuming 10 is Good Service)
 -- Note: TfL severity: 10 is Good Service. Lower is usually worse (e.g. 1 is Closed).
 getSevereDelays :: IO [LineStatus]
 getSevereDelays = do
@@ -106,22 +90,20 @@ getSevereDelays = do
     return $ map (\(sid, lid, sev, desc, reas) -> LineStatus sid sev desc reas) results
 
 -- | Query lines by severity status
--- Returns all lines that match the given severity level.
-queryLinesBySeverity :: Int -> IO [LineStatus]
+-- Returns a list of (LineName, LineStatus) tuples
+queryLinesBySeverity :: Int -> IO [(Text, LineStatus)]
 queryLinesBySeverity severity = do
     conn <- open "tfl.db"
-    results <- query conn "SELECT id, lineId, severity, description, reason FROM statuses WHERE severity = ?" (Only severity) :: IO [(Int, Text, Int, Text, Maybe Text)]
+    results <- query conn "SELECT lines.name, statuses.id, statuses.severity, statuses.description, statuses.reason FROM statuses JOIN lines ON statuses.lineId = lines.id WHERE statuses.severity = ?" (Only severity) :: IO [(Text, Int, Int, Text, Maybe Text)]
     close conn
-    return $ map (\(sid, lid, sev, desc, reas) -> LineStatus sid sev desc reas) results
+    return $ map (\(lname, sid, sev, desc, reas) -> (lname, LineStatus sid sev desc reas)) results
 
--- | Retrieve data from the database
--- Reconstructs the Line data structure from the relational database tables.
+-- | Now we are Retrieving data from the database
 retrieveData :: IO [Line]
 retrieveData = do
     conn <- open "tfl.db"
-    -- This is a bit complex to reconstruct [Line] from flat tables.
-    -- For now, let's just implement a basic retrieval or return empty to satisfy the type signature.
-    -- We need to query lines, then for each line query statuses.
+    -- For now,  we are just implementing a basic retrieval or return empty to satisfy the type signature.
+    -- We need to query lines and then for each line query statuses.
     lineRows <- query_ conn "SELECT id, name, modeName, statusSeverityDescription FROM lines" :: IO [(Text, Text, Text, Text)]
     
     lines <- mapM (\(lid, lname, lmode, _) -> do

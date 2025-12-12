@@ -43,6 +43,7 @@ The application is built using `stack`.
     ```
     This exports the line data to `data.json`.
 
+<<<<<<< HEAD
 5.  **Run Queries:**
     ```bash
     stack run -- query 10
@@ -74,3 +75,24 @@ For the extra challenging feature, we implemented a full **Introduction to Pathf
 ## Conclusion
 The application successfully demonstrates functional programming concepts in Haskell, including IO handling, JSON parsing, database management, and modular design. It exceeds the requirements by implementing a complex, interactive Journey Planner that solves a real-world problem.
 
+=======
+5.  **Search Stations (Extra Feature):**
+    ```bash
+    stack run -- search "Stratford"
+    ```
+    This searches the database for stations matching the query string.
+
+## Extra Feature: Station Search & Connectivity
+For the extra challenging feature, we implemented **Station Fetching and Search**.
+- **Challenge**: The basic requirement was to fetch a single JSON document. We went beyond this by fetching the `StopPoints` (stations) for *every* tube line. This involved making multiple HTTP requests in a loop (`Fetch.fetchStations`) and parsing a different JSON structure.
+- **Database Complexity**: We implemented a many-to-many relationship between Lines and Stations (`line_stations` table) because a single station (e.g., King's Cross) can be on multiple lines.
+- **Functionality**: Users can search for stations by name using the `search` command, which queries the `stations` table using SQL `LIKE` pattern matching.
+
+## Technical Details
+- **JSON Parsing**: We used `aeson`'s generic derivation for `FromJSON` and `ToJSON` to reduce boilerplate code.
+- **Database**: We used `sqlite-simple` for type-safe database interactions.
+- **Error Handling**: We handled JSON parsing errors gracefully in `Main.hs`.
+
+## Conclusion
+The application successfully demonstrates functional programming concepts in Haskell, including IO handling, JSON parsing, database management, and modular design.
+>>>>>>> parent of 8c04d89 (Merged PR #1: Resolved conflicts in source code and accepted build file deletion.)
