@@ -135,7 +135,7 @@ handleSearch queryStr = withErrorHandling "Getting Error while searching station
 
 -- | Interactive journey planner
 handlePlanJourney :: IO ()
-handlePlanJourney = withErrorHandling "Getting Error while planning journey" $ do
+handlePlanJourney = withErrorHandling "Error:" $ do
     -- 1. Get Start Station
     putStr "From (or 'exit' to quit): "
     hFlush stdout
@@ -192,6 +192,7 @@ withErrorHandling msg action = catch action handler
     handler :: SomeException -> IO ()
     handler e
         | show e == "ExitSuccess" = exitSuccess
+        | "StatusCodeException" `isInfixOf` show e = putStrLn $ msg ++ ": We are facing error while planning your journey. Kindly verify you selections , the possible cause of failure might be Invalid Station ID or API Error (404/400) due to wrong selection."
         | "HttpExceptionRequest" `isInfixOf` show e = putStrLn $ msg ++ ": No Internet Connection or API is down."
         | "ConnectionFailure" `isInfixOf` show e = putStrLn $ msg ++ ": No Internet Connection."
         | "SQLite" `isInfixOf` show e = putStrLn $ msg ++ ": Database error."
