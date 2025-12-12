@@ -1,12 +1,6 @@
 {-|
 Module      : Database
 Description : SQLite database interaction module
-Copyright   : (c) Author name here, 2025
-License     : BSD3
-Maintainer  : example@example.com
-Stability   : experimental
-Portability : POSIX
-
 This module manages the local SQLite database, including creating tables,
 saving data, and querying stations and delays.
 -}

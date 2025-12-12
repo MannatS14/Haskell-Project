@@ -22,102 +22,132 @@ main :: IO ()
 main = do
     args <- getArgs
     case args of
-        ["create"] -> withErrorHandling "Error creating database" $ do
-            putStrLn "Creating database..."
-            initialiseDB
-            putStrLn "Database created."
+        ["create"]           -> handleCreate
+        ["loaddata"]         -> handleLoadData
+        ["dumpdata"]         -> handleDumpData
+        ("query":qArgs)      -> handleQuery qArgs
+        ["severe-delays"]    -> handleSevereDelays
+        ["search", queryStr] -> handleSearch queryStr
+        ["plan-journey"]     -> handlePlanJourney
+        _                    -> printUsage
+
+-- | Print usage information
+printUsage :: IO ()
+printUsage = putStrLn "Usage: stack run -- [create|loaddata|dumpdata|query <args>|plan-journey]"
+
+-- | Create the database tables
+handleCreate :: IO ()
+handleCreate = withErrorHandling "Error creating database" $ do
+    putStrLn "Started Creating the Database"
+    initialiseDB
+    putStrLn "Database created."
+
+-- | Download and save line/station data
+handleLoadData :: IO ()
+handleLoadData = withErrorHandling "Error while loading data" $ do
+    putStrLn "Downloading data..."
+    json <- downloadData
+    putStrLn "Parsing the data for the lines"
+    case parseLines json of
+        Left err -> putStrLn $ "Error parsing JSON: " ++ err
+        Right lines -> do
+            putStrLn $ "Saving " ++ show (length lines) ++ " lines to database..."
+            saveData lines
             
-        ["loaddata"] -> withErrorHandling "Error loading data" $ do
-            putStrLn "Downloading data..."
-            json <- downloadData
-            putStrLn "Parsing data..."
-            case parseLines json of
-                Left err -> putStrLn $ "Error parsing JSON: " ++ err
-                Right lines -> do
-                    putStrLn $ "Saving " ++ show (length lines) ++ " lines to database..."
-                    saveData lines
-                    
-                    -- Fetch stations for each line
-                    putStrLn "Fetching stations for each line (this might take a while)..."
-                    forM_ lines $ \line -> do
-                        putStrLn $ "Fetching stations for " ++ show (Types.name line)
-                        stationJson <- fetchStations (Types.id line)
-                        case parseStations stationJson of
-                            Left err -> putStrLn $ "Error parsing stations for line " ++ show (Types.name line) ++ ": " ++ err
-                            Right stations -> do
-                                saveStations (Types.id line) stations
-                                putStrLn $ "Saved " ++ show (length stations) ++ " stations."
-                                
-                    putStrLn "Data saved."
+            putStrLn "Fetching the stations details for each line -----"
+            forM_ lines $ \line -> do
+                putStrLn $ "Fetching the stations details for " ++ show (Types.name line)
+                stationJson <- fetchStations (Types.id line)
+                case parseStations stationJson of
+                    Left err -> putStrLn $ "Getting Error while parsing stations for line " ++ show (Types.name line) ++ ": " ++ err
+                    Right stations -> do
+                        saveStations (Types.id line) stations
+                        putStrLn $ "Saved " ++ show (length stations) ++ " stations."
+                        
+            putStrLn "Data saved."
 
-        ["dumpdata"] -> withErrorHandling "Error dumping data" $ do
-            putStrLn "Dumping data to data.json..."
-            lines <- retrieveData
-            writeJson "data.json" lines
-            putStrLn "Data dumped."
+-- | Dump database content to JSON file
+handleDumpData :: IO ()
+handleDumpData = withErrorHandling "Getting Error while dumping data" $ do
+    putStrLn "Dumping data to data.json..."
+    lines <- retrieveData
+    writeJson "data.json" lines
+    putStrLn "Data dumped."
+
+-- | Placeholder for generic queries
+handleQuery :: [String] -> IO ()
+handleQuery qArgs = do
+    putStrLn $ "Running query: " ++ unwords qArgs
+    putStrLn "the functionality for query is not yet implemented."
+
+-- | Check for severe delays
+handleSevereDelays :: IO ()
+handleSevereDelays = withErrorHandling "Getting Error while checking delays" $ do
+    putStrLn "Checking for severe delays..."
+    delays <- getSevereDelays
+    if null delays
+        then putStrLn "There is no severe delays found.The service is good on all lines!"
+        else mapM_ (\s -> putStrLn $ show (Types.statusSeverityDescription s) ++ ": " ++ show (Types.reason s)) delays
+
+-- | Search for a station by name
+handleSearch :: String -> IO ()
+handleSearch queryStr = withErrorHandling "Getting Error while searching stations" $ do
+    putStrLn $ "Searching for stations matching: " ++ queryStr
+    results <- searchStations queryStr
+    mapM_ (\s -> putStrLn $ show (Types.commonName s) ++ " (" ++ show (Types.stationId s) ++ ")") results
+
+-- | Interactive journey planner
+handlePlanJourney :: IO ()
+handlePlanJourney = withErrorHandling "Getting Error while planning journey" $ do
+    -- 1. Get Start Station
+    putStr "From (or 'exit' to quit): "
+    hFlush stdout
+    fromInput <- getLine
+    checkExit fromInput
+    from <- resolveStation fromInput
+    
+    -- 2. Get Destination Station
+    putStr "To (or 'exit' to quit): "
+    hFlush stdout
+    toInput <- getLine
+    checkExit toInput
+    to <- resolveStation toInput
+    
+    -- 3. Get User Preferences
+    modes <- selectModes
+    preference <- selectPreference
+    
+    -- 4. Fetch and Display Results
+    putStrLn "Fetching journey options..."
+    json <- fetchJourney from to modes preference
+    case parseJourney json of
+        Left err -> putStrLn $ "Getting Error while parsing journey data: " ++ err
+        Right (JourneyResponse journeys) -> do
+            let sortedJourneys = sortJourneys preference journeys
+            putStrLn $ "Found " ++ show (length sortedJourneys) ++ " options:--"
             
-        ("query":qArgs) -> do
-            putStrLn $ "Running query: " ++ unwords qArgs
+            -- Display options
+            forM_ (zip [1..] sortedJourneys) $ \(i, journey) -> do
+                let modes = map (Types.mName . Types.mode) (Types.legs journey)
+                let modeStr = T.intercalate (T.pack ", ") modes
+                putStrLn $ show i ++ ". Duration: " ++ show (Types.duration journey) ++ " min (" ++ T.unpack modeStr ++ ")"
+                putStrLn $ "   Start: " ++ show (Types.startDateTime journey) ++ ", Arrival: " ++ show (Types.arrivalDateTime journey)
             
-            putStrLn "Query functionality not yet implemented."
-
-        ["severe-delays"] -> withErrorHandling "Error checking delays" $ do
-            putStrLn "Checking for severe delays..."
-            delays <- getSevereDelays
-            if null delays
-                then putStrLn "No severe delays found. Good Service on all lines!"
-                else mapM_ (\s -> putStrLn $ show (Types.statusSeverityDescription s) ++ ": " ++ show (Types.reason s)) delays
-
-        ["search", queryStr] -> withErrorHandling "Error searching stations" $ do
-            putStrLn $ "Searching for stations matching: " ++ queryStr
-            results <- searchStations queryStr
-            mapM_ (\s -> putStrLn $ show (Types.commonName s) ++ " (" ++ show (Types.stationId s) ++ ")") results
-
-        ["plan-journey"] -> withErrorHandling "Error planning journey" $ do
-            putStr "From (or 'exit' to quit): "
+            -- 5. User Selection for Details
+            putStr "Select an option (number) or 'exit': "
             hFlush stdout
-            fromInput <- getLine
-            checkExit fromInput
-            from <- resolveStation fromInput
-            
-            putStr "To (or 'exit' to quit): "
-            hFlush stdout
-            toInput <- getLine
-            checkExit toInput
-            to <- resolveStation toInput
-            
-            modes <- selectModes
-            preference <- selectPreference
-            
-            putStrLn "Fetching journey options..."
-            json <- fetchJourney from to modes preference
-            case parseJourney json of
-                Left err -> putStrLn $ "Error parsing journey data: " ++ err
-                Right (JourneyResponse journeys) -> do
-                    let sortedJourneys = sortJourneys preference journeys
-                    putStrLn $ "Found " ++ show (length sortedJourneys) ++ " options:"
-                    forM_ (zip [1..] sortedJourneys) $ \(i, journey) -> do
-                        let modes = map (Types.mName . Types.mode) (Types.legs journey)
-                        let modeStr = T.intercalate (T.pack ", ") modes
-                        putStrLn $ show i ++ ". Duration: " ++ show (Types.duration journey) ++ " min (" ++ T.unpack modeStr ++ ")"
-                        putStrLn $ "   Start: " ++ show (Types.startDateTime journey) ++ ", Arrival: " ++ show (Types.arrivalDateTime journey)
-                    
-                    putStr "Select an option (number) or 'exit': "
-                    hFlush stdout
-                    selection <- getLine
-                    checkExit selection
-                    case readMaybe selection of
-                        Just n | n > 0 && n <= length sortedJourneys -> do
-                            let selectedJourney = sortedJourneys !! (n - 1)
-                            putStrLn "Journey Details:"
-                            forM_ (Types.legs selectedJourney) $ \leg -> do
-                                putStrLn $ "  - " ++ show (Types.legDuration leg) ++ " min (" ++ show (Types.mName $ Types.mode leg) ++ ")"
-                                putStrLn $ "    From: " ++ show (Types.pointName $ Types.departurePoint leg)
-                                putStrLn $ "    To:   " ++ show (Types.pointName $ Types.arrivalPoint leg)
-                                putStrLn $ "    " ++ show (Types.summary $ Types.instruction leg)
-                        _ -> putStrLn "Invalid selection."
-
-        _ -> putStrLn "Usage: stack run -- [create|loaddata|dumpdata|query <args>|plan-journey]"
+            selection <- getLine
+            checkExit selection
+            case readMaybe selection of
+                Just n | n > 0 && n <= length sortedJourneys -> do
+                    let selectedJourney = sortedJourneys !! (n - 1)
+                    putStrLn "Journey Details:"
+                    forM_ (Types.legs selectedJourney) $ \leg -> do
+                        putStrLn $ "  - " ++ show (Types.legDuration leg) ++ " min (" ++ show (Types.mName $ Types.mode leg) ++ ")"
+                        putStrLn $ "    From: " ++ show (Types.pointName $ Types.departurePoint leg)
+                        putStrLn $ "    To:   " ++ show (Types.pointName $ Types.arrivalPoint leg)
+                        putStrLn $ "    " ++ show (Types.summary $ Types.instruction leg)
+                _ -> putStrLn "Invalid selection."
 
 withErrorHandling :: String -> IO () -> IO ()
 withErrorHandling msg action = catch action handler
@@ -125,6 +155,7 @@ withErrorHandling msg action = catch action handler
     handler :: SomeException -> IO ()
     handler e
         | show e == "ExitSuccess" = exitSuccess
+        | "StatusCodeException" `isInfixOf` show e = putStrLn $ msg ++ ": Invalid Station ID or API Error (404/400). Please check your station selection."
         | "HttpExceptionRequest" `isInfixOf` show e = putStrLn $ msg ++ ": No Internet Connection or API is down."
         | "ConnectionFailure" `isInfixOf` show e = putStrLn $ msg ++ ": No Internet Connection."
         | "SQLite" `isInfixOf` show e = putStrLn $ msg ++ ": Database error."
@@ -147,32 +178,54 @@ checkExit input = do
 resolveStation :: String -> IO String
 resolveStation input = do
     results <- searchStations input
-    case results of
-        [station] -> do
-            putStrLn $ "Selected station: " ++ show (Types.commonName station)
-            return (T.unpack $ Types.stationId station)
-        [] -> do
-            putStrLn "No matching stations found. Please try again."
-            putStr "Enter station name (or 'exit'): "
+    let sortedResults = sortBy (comparing Types.commonName) results
+    
+    if length sortedResults > 25
+        then do
+            putStrLn $ "Found " ++ show (length sortedResults) ++ " stations matching \"" ++ input ++ "\"."
+            putStr "Too many results. Show all? (y/n) or 'exit': "
             hFlush stdout
-            newInput <- getLine
-            checkExit newInput
-            resolveStation newInput
+            choice <- getLine
+            checkExit choice
+            if choice == "y" || choice == "yes"
+                then showStationList sortedResults input
+                else do
+                    putStrLn "Please refine your search."
+                    putStr "Enter station name (or 'exit'): "
+                    hFlush stdout
+                    newInput <- getLine
+                    checkExit newInput
+                    resolveStation newInput
+        else showStationList sortedResults input
 
-        stations -> do
-            putStrLn "Found matching stations:"
-            forM_ (zip [1..] stations) $ \(i, station) -> do
-                putStrLn $ show i ++ ". " ++ show (Types.commonName station) ++ " (" ++ show (Types.stationId station) ++ ")"
-            
-            putStr "Select a station (number), press enter to use input as is, or 'exit': "
-            hFlush stdout
-            selection <- getLine
-            checkExit selection
-            case readMaybe selection of
-                Just n | n > 0 && n <= length stations -> do
-                    let selected = stations !! (n - 1)
-                    return (T.unpack $ Types.stationId selected)
-                _ -> return input
+showStationList :: [Types.Station] -> String -> IO String
+showStationList stations originalInput = case stations of
+    [station] -> do
+        putStrLn $ "Selected station: " ++ show (Types.commonName station)
+        return (T.unpack $ Types.stationId station)
+    [] -> do
+        putStrLn "No matching stations found. Please try again."
+        putStr "Enter station name (or 'exit'): "
+        hFlush stdout
+        newInput <- getLine
+        checkExit newInput
+        resolveStation newInput
+    _ -> do
+        putStrLn "Found matching stations:"
+        forM_ (zip [1..] stations) $ \(i, station) -> do
+            putStrLn $ show i ++ ". " ++ show (Types.commonName station) ++ " (" ++ show (Types.stationId station) ++ ")"
+        
+        putStr "Select a station (number) or 'exit': "
+        hFlush stdout
+        selection <- getLine
+        checkExit selection
+        case readMaybe selection of
+            Just n | n > 0 && n <= length stations -> do
+                let selected = stations !! (n - 1)
+                return (T.unpack $ Types.stationId selected)
+            _ -> do
+                putStrLn "Invalid selection. Please select a number from the list."
+                showStationList stations originalInput
 
 selectModes :: IO (Maybe String)
 selectModes = do
@@ -189,12 +242,23 @@ selectModes = do
     input <- getLine
     checkExit input
     if null input
-        then return Nothing
+        then do
+            putStrLn "Selected: All Modes"
+            return Nothing
         else do
             let selections = map T.strip (T.splitOn (T.pack ",") (T.pack input))
-            let modes = map mapMode selections
-            return $ Just (T.unpack $ T.intercalate (T.pack ",") modes)
+            if all isValidSelection selections
+                then do
+                    let modes = map mapMode selections
+                    putStrLn $ "Selected: " ++ T.unpack (T.intercalate (T.pack ", ") selections)
+                    return $ Just (T.unpack $ T.intercalate (T.pack ",") modes)
+                else do
+                    putStrLn "Invalid selection. Please use numbers 1-7 (comma separated)."
+                    selectModes
   where
+    isValidSelection :: T.Text -> Bool
+    isValidSelection t = t `elem` map (T.pack . show) [1..7]
+
     mapMode :: T.Text -> T.Text
     mapMode t
         | t == T.pack "1" = T.pack "tube"
@@ -217,11 +281,21 @@ selectPreference = do
     input <- getLine
     checkExit input
     case input of
-        "1" -> return $ Just "leasttime"
-        "2" -> return $ Just "leastinterchange"
-        "3" -> return $ Just "leastwalking"
-        ""  -> return Nothing
-        _   -> return Nothing
+        "1" -> do
+            putStrLn "Selected: Fastest"
+            return $ Just "leasttime"
+        "2" -> do
+            putStrLn "Selected: Fewest Changes"
+            return $ Just "leastinterchange"
+        "3" -> do
+            putStrLn "Selected: Least Walking"
+            return $ Just "leastwalking"
+        ""  -> do
+            putStrLn "Selected: No Preference"
+            return Nothing
+        _   -> do
+            putStrLn "Invalid input, defaulting to: No Preference"
+            return Nothing
 
 
 

@@ -1,12 +1,6 @@
 {-|
 Module      : Fetch
 Description : API interaction module
-Copyright   : (c) Author name here, 2025
-License     : BSD3
-Maintainer  : example@example.com
-Stability   : experimental
-Portability : POSIX
-
 This module handles all HTTP requests to the Transport for London (TfL) API,
 including fetching line statuses, stations, and journey plans.
 -}
