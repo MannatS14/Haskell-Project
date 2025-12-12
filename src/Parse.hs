@@ -1,13 +1,14 @@
 {-|
 Module      : Parse
-Description : JSON parsing module
-Copyright   : (c) Author name here, 2025
+Description : JSON parsing module using Aeson
+Copyright   : (c) Group X, 2025
 License     : BSD3
 Maintainer  : example@example.com
 Stability   : experimental
 Portability : POSIX
 
 This module handles parsing of JSON responses from the TfL API into Haskell data types.
+It utilizes GHC Generics and Aeson for efficient decoding.
 -}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
@@ -19,14 +20,17 @@ import qualified Data.ByteString.Lazy as LBS
 import Types
 
 -- | Parse JSON data into a list of Lines
+-- Decodes the API response for line comparisons.
 parseLines :: LBS.ByteString -> Either String [Line]
 parseLines = eitherDecode
 
 -- | Parse JSON data into a list of Stations
+-- Decodes the API response containing StopPoints.
 parseStations :: LBS.ByteString -> Either String [Station]
 parseStations = eitherDecode
 
 -- | Generate JSON from data and write to file
+-- Encodes a list of Lines into JSON and saves it to the specified FilePath.
 writeJson :: FilePath -> [Line] -> IO ()
 writeJson path lines = LBS.writeFile path (encode lines)
 
@@ -59,6 +63,7 @@ instance FromJSON Station where
 instance ToJSON Station
 
 -- | Parse JSON data into a JourneyResponse
+-- Decodes the complex Journey planner API response.
 parseJourney :: LBS.ByteString -> Either String JourneyResponse
 parseJourney = eitherDecode
 

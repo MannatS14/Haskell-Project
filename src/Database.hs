@@ -1,7 +1,7 @@
 {-|
 Module      : Database
 Description : SQLite database interaction module
-Copyright   : (c) Author name here, 2025
+Copyright   : (c) Group X, 2025
 License     : BSD3
 Maintainer  : example@example.com
 Stability   : experimental
@@ -9,6 +9,7 @@ Portability : POSIX
 
 This module manages the local SQLite database, including creating tables,
 saving data, and querying stations and delays.
+It implements the schema for lines, statuses, and stations.
 -}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -20,6 +21,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 -- | Initialize the database and create tables
+-- Creates 'lines', 'statuses', 'stations', and 'line_stations' tables if they don't exist.
 initialiseDB :: IO ()
 initialiseDB = do
     conn <- open "tfl.db"
@@ -33,6 +35,7 @@ initialiseDB = do
     close conn
 
 -- | Save data to the database
+-- Clears existing 'lines' and 'statuses' tables and inserts new data.
 saveData :: [Line] -> IO ()
 saveData lines = do
     conn <- open "tfl.db"
@@ -48,12 +51,14 @@ saveData lines = do
     close conn
 
 -- | Save stations to the database
+-- Associates a list of stations with a specific line ID.
 saveStations :: Text -> [Station] -> IO ()
 saveStations lineId stations = do
     conn <- open "tfl.db"
     mapM_ (insertStation conn lineId) stations
     close conn
 
+-- | Helper function to insert a single line and its statuses
 insertLine :: Connection -> Line -> IO ()
 insertLine conn line = do
     execute conn "INSERT INTO lines (id, name, modeName, statusSeverityDescription) VALUES (?, ?, ?, ?)"
@@ -67,11 +72,13 @@ insertLine conn line = do
         (s:_) -> Types.statusSeverityDescription s
         []    -> "Unknown"
 
+-- | Helper function to insert a status record
 insertStatus :: Connection -> Text -> LineStatus -> IO ()
 insertStatus conn lineId status = do
     execute conn "INSERT INTO statuses (id, lineId, severity, description, reason) VALUES (?, ?, ?, ?, ?)"
         (Types.statusId status, lineId, Types.statusSeverity status, Types.statusSeverityDescription status, Types.reason status)
 
+-- | Helper function to insert a station and its relationship to the line
 insertStation :: Connection -> Text -> Station -> IO ()
 insertStation conn lineId station = do
     execute conn "INSERT OR IGNORE INTO stations (id, commonName, lat, lon) VALUES (?, ?, ?, ?)"
@@ -80,6 +87,7 @@ insertStation conn lineId station = do
         (lineId, Types.stationId station)
 
 -- | Search stations by name
+-- Uses SQL LIKE pattern matching to find matching stations.
 searchStations :: String -> IO [Station]
 searchStations queryStr = do
     conn <- open "tfl.db"
@@ -87,7 +95,8 @@ searchStations queryStr = do
     close conn
     return $ map (\(sid, name, lat, lon) -> Station sid name lat lon) results
 
--- | Get lines with severe delays (severity < 10, assuming 10 is Good Service)
+-- | Get lines with severe delays
+-- Returns a list of LineStatuses where severity is less than 10 (Good Service).
 -- Note: TfL severity: 10 is Good Service. Lower is usually worse (e.g. 1 is Closed).
 getSevereDelays :: IO [LineStatus]
 getSevereDelays = do
@@ -96,7 +105,17 @@ getSevereDelays = do
     close conn
     return $ map (\(sid, lid, sev, desc, reas) -> LineStatus sid sev desc reas) results
 
+-- | Query lines by severity status
+-- Returns all lines that match the given severity level.
+queryLinesBySeverity :: Int -> IO [LineStatus]
+queryLinesBySeverity severity = do
+    conn <- open "tfl.db"
+    results <- query conn "SELECT id, lineId, severity, description, reason FROM statuses WHERE severity = ?" (Only severity) :: IO [(Int, Text, Int, Text, Maybe Text)]
+    close conn
+    return $ map (\(sid, lid, sev, desc, reas) -> LineStatus sid sev desc reas) results
+
 -- | Retrieve data from the database
+-- Reconstructs the Line data structure from the relational database tables.
 retrieveData :: IO [Line]
 retrieveData = do
     conn <- open "tfl.db"

@@ -43,22 +43,34 @@ The application is built using `stack`.
     ```
     This exports the line data to `data.json`.
 
-5.  **Search Stations (Extra Feature):**
+5.  **Run Queries:**
     ```bash
-    stack run -- search "Stratford"
+    stack run -- query 10
     ```
-    This searches the database for stations matching the query string.
+    This runs a query against the database. For example, `10` searches for lines with "Good Service".
 
-## Extra Feature: Station Search & Connectivity
-For the extra challenging feature, we implemented **Station Fetching and Search**.
-- **Challenge**: The basic requirement was to fetch a single JSON document. We went beyond this by fetching the `StopPoints` (stations) for *every* tube line. This involved making multiple HTTP requests in a loop (`Fetch.fetchStations`) and parsing a different JSON structure.
-- **Database Complexity**: We implemented a many-to-many relationship between Lines and Stations (`line_stations` table) because a single station (e.g., King's Cross) can be on multiple lines.
-- **Functionality**: Users can search for stations by name using the `search` command, which queries the `stations` table using SQL `LIKE` pattern matching.
+6.  **Plan a Journey (Extra Feature):**
+    ```bash
+    stack run -- plan-journey
+    ```
+    This interactive command allows you to plan a journey between two stations, selecting modes and preferences.
+
+## Extra Feature: Interactive Journey Planner
+For the extra challenging feature, we implemented a full **Introduction to Pathfinding via API Integration**.
+- **Challenge**: Instead of just fetching static data, we integrated the complex `Journey` endpoint from the TfL API. This required handling dynamic user input sequences (From -> To -> Modes -> Preferences) and parsing a deeply nested JSON response containing `Journeys`, `Legs`, `Instructions`, and `Modes`.
+- **Functionality**:
+    *   **Interactive CLI**: Users are guided through a step-by-step process.
+    *   **Station Resolution**: If a user types a partial station name (e.g., "Stratford"), the app searches the database and lets the user disambiguate from a list of matches.
+    *   **Customizable**: Users can filter by transport mode (Tube, Bus, DLR, etc.) and routing preference (Fastest, Least Walking, etc.).
+    *   **Result Display**: The app displays multiple journey options with duration, transfer details, and walking instructions, sorted by the user's preference.
 
 ## Technical Details
-- **JSON Parsing**: We used `aeson`'s generic derivation for `FromJSON` and `ToJSON` to reduce boilerplate code.
-- **Database**: We used `sqlite-simple` for type-safe database interactions.
-- **Error Handling**: We handled JSON parsing errors gracefully in `Main.hs`.
+- **Architecture**: We strictly followed the Model-View-Controller (MVC) pattern adapted for a CLI app. `Types.hs` (Model), `Main.hs` (View/Controller), and `Fetch/Parse/Database` (Services).
+- **JSON Parsing**: We used `aeson`'s generic derivation for `FromJSON` and `ToJSON`, handling optional fields (Many `Maybe Text`) correctly to avoid runtime crashes on missing API data.
+- **Database**: We used `sqlite-simple` for type-safe database interactions, normalizing data into `lines`, `statuses`, `stations`, and `line_stations`.
+- **Error Handling**: We implemented a robust error handling wrapper (`withErrorHandling`) in `Main.hs` to catch HTTP exceptions, Database errors, and parsing failures, presenting them as user-friendly messages instead of stack traces.
+- **Documentation**: All modules are documented using Haddock syntax.
 
 ## Conclusion
-The application successfully demonstrates functional programming concepts in Haskell, including IO handling, JSON parsing, database management, and modular design.
+The application successfully demonstrates functional programming concepts in Haskell, including IO handling, JSON parsing, database management, and modular design. It exceeds the requirements by implementing a complex, interactive Journey Planner that solves a real-world problem.
+

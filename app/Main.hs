@@ -1,4 +1,17 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-|
+Module      : Main
+Description : Main entry point for the TfL Journey Planner application
+Copyright   : (c) Group X, 2025
+License     : BSD3
+Maintainer  : example@example.com
+Stability   : experimental
+Portability : POSIX
+
+This module handles command-line argument parsing and dispatches execution to
+the appropriate modules (Database, Fetch, Parse). It provides the CLI interface
+for creating the database, loading data, querying lines, and planning journeys.
+-}
 module Main where
 
 import System.Environment (getArgs)
@@ -15,9 +28,19 @@ import System.Exit (exitSuccess)
 
 import Fetch (downloadData, fetchStations, fetchJourney)
 import Parse (parseLines, writeJson, parseStations, parseJourney)
-import Database (initialiseDB, saveData, retrieveData, saveStations, searchStations, getSevereDelays)
+import Database (initialiseDB, saveData, retrieveData, saveStations, searchStations, getSevereDelays, queryLinesBySeverity)
 import Types (Line(..), Station(..), LineStatus(..), JourneyResponse(..), Journey(..), Leg(..), Instruction(..), Mode(..), Point(..))
 
+-- | Main entry point for the application.
+-- Parses command line arguments and executes the corresponding action:
+--
+-- * @create@: Initialises the SQLite database.
+-- * @loaddata@: Downloads data from TfL API and saves it to the database.
+-- * @dumpdata@: Exports database content to a JSON file.
+-- * @query \<severity\>@: Lists lines with the specified severity score.
+-- * @severe-delays@: Lists lines with severe delays.
+-- * @plan-journey@: Interactive journey planning wizard.
+-- * @search \<name\>@: Searches for stations by name.
 main :: IO ()
 main = do
     args <- getArgs
@@ -56,10 +79,17 @@ main = do
             writeJson "data.json" lines
             putStrLn "Data dumped."
             
-        ("query":qArgs) -> do
-            putStrLn $ "Running query: " ++ unwords qArgs
-            -- Implement generic query execution here
-            putStrLn "Query functionality not yet implemented."
+        ("query":qArgs) -> withErrorHandling "Error running query" $ do
+            case qArgs of
+                [severityStr] -> case readMaybe severityStr of
+                    Just severity -> do
+                        putStrLn $ "Searching for lines with severity status: " ++ show severity
+                        results <- Database.queryLinesBySeverity severity
+                        if null results
+                            then putStrLn "No lines found with that severity."
+                            else mapM_ (\s -> putStrLn $ "Line Status ID: " ++ show (Types.statusId s) ++ ", Description: " ++ show (Types.statusSeverityDescription s) ++ ", Reason: " ++ show (Types.reason s)) results
+                    Nothing -> putStrLn "Invalid severity. Please provide an integer (e.g., 10 for Good Service)."
+                _ -> putStrLn "Usage: stack run -- query <severity_score>"
 
         ["severe-delays"] -> withErrorHandling "Error checking delays" $ do
             putStrLn "Checking for severe delays..."
@@ -119,6 +149,10 @@ main = do
 
         _ -> putStrLn "Usage: stack run -- [create|loaddata|dumpdata|query <args>|plan-journey]"
 
+-- | Wrapper for error handling.
+-- Catches generic exceptions during IO actions and prints user-friendly error messages.
+-- Handles specific cases like "ExitSuccess" (clean exit), "HttpExceptionRequest" (network issues),
+-- and SQLite errors.
 withErrorHandling :: String -> IO () -> IO ()
 withErrorHandling msg action = catch action handler
   where
