@@ -140,7 +140,14 @@ handleSevereDelays = withErrorHandling "Getting Error while checking delays" $ d
     delays <- getSevereDelays
     if null delays
         then putStrLn "There is no severe delays found.The service is good on all lines!"
-        else mapM_ (\s -> putStrLn $ show (Types.statusSeverityDescription s) ++ ": " ++ show (Types.reason s)) delays
+        else do
+            putStrLn "Found Severe Delays:"
+            forM_ (zip [1..] delays) $ \(i, s) -> do
+                let desc = T.unpack (Types.statusSeverityDescription s)
+                let reasonText = maybe "No details" T.unpack (Types.reason s)
+                putStrLn $ show i ++ ". " ++ desc ++ ": " ++ reasonText
+                putStrLn "--------------------------------------------------"
+
 
 -- | Search for a station by name
 handleSearch :: String -> IO ()

@@ -1,8 +1,7 @@
 {-|
 Module      : Database
-Description : SQLite database interaction module
-This module manages the local SQLite database, including creating tables,
-saving data, and querying stations and delays.
+Description : SQLite database
+This file helps in managing all database related operations through SQLite.
 -}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -19,8 +18,7 @@ initialiseDB = do
     conn <- open "tfl.db"
     execute_ conn "CREATE TABLE IF NOT EXISTS lines (id TEXT PRIMARY KEY, name TEXT, modeName TEXT, statusSeverityDescription TEXT)"
     -- We are simplifying for now, just storing main line info and current status desc
-    -- In a real app we need a separate table for statuses with foreign key
-    -- We need to remove PRIMARY KEY from id because it's not unique across lines (e.g. 0)
+    
     execute_ conn "CREATE TABLE IF NOT EXISTS statuses (id INTEGER, lineId TEXT, severity INTEGER, description TEXT, reason TEXT, FOREIGN KEY(lineId) REFERENCES lines(id))"
     execute_ conn "CREATE TABLE IF NOT EXISTS stations (id TEXT PRIMARY KEY, commonName TEXT, lat REAL, lon REAL)"
     execute_ conn "CREATE TABLE IF NOT EXISTS line_stations (lineId TEXT, stationId TEXT, FOREIGN KEY(lineId) REFERENCES lines(id), FOREIGN KEY(stationId) REFERENCES stations(id))"
@@ -30,9 +28,8 @@ initialiseDB = do
 saveData :: [Line] -> IO ()
 saveData lines = do
     conn <- open "tfl.db"
-    -- Clear existing data for fresh load? Or append?
-    -- Task says "download data ... and save to database". Usually implies refreshing or adding.
-    -- Let's clear for simplicity to avoid duplicates if we run it multiple times, or use INSERT OR REPLACE.
+    -- Clear existing data for fresh load or download the data and save to
+    
     execute_ conn "DELETE FROM statuses"
     execute_ conn "DELETE FROM lines"
   
@@ -54,7 +51,6 @@ insertLine conn line = do
     
     mapM_ (insertStatus conn (Types.id line)) (Types.lineStatuses line)
   where
-    -- Just take the first status description for the summary, or "Good Service"
     mainStatusDesc :: Text
     mainStatusDesc = case Types.lineStatuses line of
         (s:_) -> Types.statusSeverityDescription s
@@ -81,7 +77,7 @@ searchStations queryStr = do
     return $ map (\(sid, name, lat, lon) -> Station sid name lat lon) results
 
 -- | Get lines with severe delays (severity < 10, assuming 10 is Good Service)
--- Note: TfL severity: 10 is Good Service. Lower is usually worse (e.g. 1 is Closed).
+
 getSevereDelays :: IO [LineStatus]
 getSevereDelays = do
     conn <- open "tfl.db"
@@ -89,8 +85,6 @@ getSevereDelays = do
     close conn
     return $ map (\(sid, lid, sev, desc, reas) -> LineStatus sid sev desc reas) results
 
--- | Query lines by severity status
--- Returns a list of (LineName, LineStatus) tuples
 queryLinesBySeverity :: Int -> IO [(Text, LineStatus)]
 queryLinesBySeverity severity = do
     conn <- open "tfl.db"
@@ -102,8 +96,6 @@ queryLinesBySeverity severity = do
 retrieveData :: IO [Line]
 retrieveData = do
     conn <- open "tfl.db"
-    -- For now,  we are just implementing a basic retrieval or return empty to satisfy the type signature.
-    -- We need to query lines and then for each line query statuses.
     lineRows <- query_ conn "SELECT id, name, modeName, statusSeverityDescription FROM lines" :: IO [(Text, Text, Text, Text)]
     
     lines <- mapM (\(lid, lname, lmode, _) -> do

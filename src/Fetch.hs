@@ -1,8 +1,7 @@
 {-|
 Module      : Fetch
 Description : API interaction module
-This module handles all HTTP requests to the Transport for London (TfL) API,
-including fetching line statuses, stations, and journey plans.
+This file handles all HTTP requests to the Transport for London (TfL) API.
 -}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -21,11 +20,10 @@ appKey :: Text
 appKey = "ce0be199e475450ab9d80bc67a0ae261"
 
 -- | URL for Tube Line Status
--- We use the 'tube' mode to get status for all tube lines
 url :: String
 url = "https://api.tfl.gov.uk/Line/Mode/tube,dlr,overground,elizabeth-line,tram/Status?app_id=" ++ T.unpack appId ++ "&app_key=" ++ T.unpack appKey
 
--- |Here is a Function to download data from the API
+-- |Function to download data
 downloadData :: IO LBS.ByteString
 downloadData = do
     request <- parseRequest url
@@ -33,7 +31,7 @@ downloadData = do
     response <- httpLBS request'
     return $ getResponseBody response
 
--- | Here is a Function to download stations for a given line
+-- | unction to download stations for a given line
 fetchStations :: Text -> IO LBS.ByteString
 fetchStations lineId = do
     let url = "https://api.tfl.gov.uk/Line/" ++ T.unpack lineId ++ "/StopPoints?app_id=" ++ T.unpack appId ++ "&app_key=" ++ T.unpack appKey
@@ -42,7 +40,7 @@ fetchStations lineId = do
     response <- httpLBS request'
     return $ getResponseBody response
 
--- |  Here is a Function to fetch journey options
+-- | Function to fetch journey options
 fetchJourney :: String -> String -> Maybe String -> Maybe String -> IO LBS.ByteString
 fetchJourney from to modes preference = do
     let baseUrl = "https://api.tfl.gov.uk/Journey/JourneyResults/" ++ from ++ "/to/" ++ to

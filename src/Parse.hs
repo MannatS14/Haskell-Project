@@ -1,7 +1,7 @@
 {-|
 Module      : Parse
 Description : JSON parsing module
-In this module we are parsing the JSON data from the TfL API into Haskell data types.
+In this file we are parsing the JSON data from the TfL API into Haskell data types.
 -}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
@@ -23,16 +23,6 @@ parseStations = eitherDecode
 -- | Generate the JSON from data and write to file
 writeJson :: FilePath -> [Line] -> IO ()
 writeJson path lines = LBS.writeFile path (encode lines)
-
--- | FromJSON and ToJSON instances
--- We will use the default generic instances which will match the field names if they align with JSON.
--- Key point: TfL API uses "id", "name", "lineStatuses" etc.
--- Key point: Types.hs uses "id", "name", "lineStatuses".
--- Key point: "lineStatuses" in JSON might be "lineStatuses" or "LineStatuses".
--- Key point: TfL API usually uses camelCase.
--- Key point: "statusId" in LineStatus might be "id".
--- We need a custom instance if field names don't match exactly.
--- As of now, let's assume that they will match or we will fix it after testing it. 
 
 instance FromJSON Line
 instance ToJSON Line
