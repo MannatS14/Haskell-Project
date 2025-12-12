@@ -1,6 +1,5 @@
 {-|
 Module      : Parse
-<<<<<<< HEAD
 Description : JSON parsing module using Aeson
 Copyright   : (c) Group X, 2025
 License     : BSD3
@@ -10,10 +9,6 @@ Portability : POSIX
 
 This module handles parsing of JSON responses from the TfL API into Haskell data types.
 It utilizes GHC Generics and Aeson for efficient decoding.
-=======
-Description : JSON parsing module
-In this module we are parsing the JSON data from the TfL API into Haskell data types.
->>>>>>> nishant-pr-branch
 -}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}

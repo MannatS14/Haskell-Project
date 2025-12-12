@@ -1,0 +1,22 @@
+? /Users/mannatsingh/.stack/programs/aarch64-osx/ghc-9.10.3/lib/ghc-9.10.3/lib/aarch64-osx-ghc-9.10.3/rts-1.0.2/include/ghcversion.h
+: hash: 7590ea01e313d089c303211ba85b0e4454627be40dcb88be287ed32f7e97187f
+/Users/mannatsingh/Downloads/Haskell-Project/.stack-work/dist/aarch64-osx/ghc-9.10.3/build/autogen/Paths_haskell_project.hs:
+  hash: 4cbab44a538af95ea70531e7c6167d90ffb8efacce09dcedcaeebbfd335df48e
+/Users/mannatsingh/Downloads/Haskell-Project/.stack-work/dist/aarch64-osx/ghc-9.10.3/build/autogen/cabal_macros.h:
+  hash: b3a28c04946227346a4b3ba94b90f80a300d82648267549265a2726a512a157a
+/Users/mannatsingh/Downloads/Haskell-Project/CHANGELOG.md:
+  hash: 4f827adb3b3becb6146708bd7fea9766fafdd6b18cff37f088c12afad0a8c448
+/Users/mannatsingh/Downloads/Haskell-Project/README.md:
+  hash: abe6a2816161489c842d40815010e3d38d7c4487c10573c3f37e91abbf24e461
+/Users/mannatsingh/Downloads/Haskell-Project/haskell-project.cabal:
+  hash: ef031804b3927730deb2ceaef9c3511f6c2d5ef41fd462afa03f24695f24e566
+/Users/mannatsingh/Downloads/Haskell-Project/package.yaml:
+  hash: 06d7b68b704253839e22bb6633ba25801ed2199d059a2a94e0b98ef2c58083a4
+/Users/mannatsingh/Downloads/Haskell-Project/src/Database.hs:
+  hash: 53633064263a88c6313d1c6a92d8298382efe3f4ee93ec965b1c19a3688d983b
+/Users/mannatsingh/Downloads/Haskell-Project/src/Fetch.hs:
+  hash: 6f9c00db19928ebd4c22010706e7af41674671d3c513cad83a5bbf50f8e57e58
+/Users/mannatsingh/Downloads/Haskell-Project/src/Parse.hs:
+  hash: 683c6aa46989e4f7433ebff5a09c6613c75417e3b79dfea37675392ba5f62dd3
+/Users/mannatsingh/Downloads/Haskell-Project/src/Types.hs:
+  hash: 5011440baa8f9a47b9b7d9d1a0f5f92072b62b8d201b090f589706f23765ad1d

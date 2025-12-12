@@ -1,15 +1,12 @@
 {-|
 Module      : Database
 Description : SQLite database interaction module
-<<<<<<< HEAD
 Copyright   : (c) Group X, 2025
 License     : BSD3
 Maintainer  : example@example.com
 Stability   : experimental
 Portability : POSIX
 
-=======
->>>>>>> nishant-pr-branch
 This module manages the local SQLite database, including creating tables,
 saving data, and querying stations and delays.
 It implements the schema for lines, statuses, and stations.
@@ -109,7 +106,6 @@ getSevereDelays = do
     return $ map (\(sid, lid, sev, desc, reas) -> LineStatus sid sev desc reas) results
 
 -- | Query lines by severity status
-<<<<<<< HEAD
 -- Returns all lines that match the given severity level.
 queryLinesBySeverity :: Int -> IO [LineStatus]
 queryLinesBySeverity severity = do
@@ -120,17 +116,6 @@ queryLinesBySeverity severity = do
 
 -- | Retrieve data from the database
 -- Reconstructs the Line data structure from the relational database tables.
-=======
--- Returns a list of (LineName, LineStatus) tuples
-queryLinesBySeverity :: Int -> IO [(Text, LineStatus)]
-queryLinesBySeverity severity = do
-    conn <- open "tfl.db"
-    results <- query conn "SELECT lines.name, statuses.id, statuses.severity, statuses.description, statuses.reason FROM statuses JOIN lines ON statuses.lineId = lines.id WHERE statuses.severity = ?" (Only severity) :: IO [(Text, Int, Int, Text, Maybe Text)]
-    close conn
-    return $ map (\(lname, sid, sev, desc, reas) -> (lname, LineStatus sid sev desc reas)) results
-
--- | Now we are Retrieving data from the database
->>>>>>> nishant-pr-branch
 retrieveData :: IO [Line]
 retrieveData = do
     conn <- open "tfl.db"

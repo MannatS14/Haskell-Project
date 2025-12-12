@@ -1,6 +1,12 @@
 {-|
 Module      : Types
 Description : Data types for the application
+Copyright   : (c) Author name here, 2025
+License     : BSD3
+Maintainer  : example@example.com
+Stability   : experimental
+Portability : POSIX
+
 This module defines the core data structures used throughout the application,
 mirroring the TfL API response structure.
 -}
