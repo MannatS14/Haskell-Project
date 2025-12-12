@@ -22,33 +22,49 @@ main :: IO ()
 main = do
     args <- getArgs
     case args of
-        ["create"] -> withErrorHandling "Error creating database" $ do
-            putStrLn "Creating database..."
-            initialiseDB
-            putStrLn "Database created."
+        ["create"]           -> handleCreate
+        ["loaddata"]         -> handleLoadData
+        ["dumpdata"]         -> handleDumpData
+        ("filter-status":as) -> handleFilterStatus as
+        ["severe-delays"]    -> handleSevereDelays
+        ["search", queryStr] -> handleSearch queryStr
+        ["plan-journey"]     -> handlePlanJourney
+        _                    -> printUsage
+
+-- | Print usage information
+printUsage :: IO ()
+printUsage = putStrLn "Usage: stack run -- [create|loaddata|dumpdata|filter-status <code >|plan-journey]"
+
+-- | Create the database tables
+handleCreate :: IO ()
+handleCreate = withErrorHandling "Error creating database" $ do
+    putStrLn "Started Creating the Database"
+    initialiseDB
+    putStrLn "Database created."
+
+-- | Download and save line/station data
+handleLoadData :: IO ()
+handleLoadData = withErrorHandling "Error while loading data" $ do
+    putStrLn "Downloading data..."
+    json <- downloadData
+    putStrLn "Parsing the data for the lines"
+    case parseLines json of
+        Left err -> putStrLn $ "Error parsing JSON: " ++ err
+        Right lines -> do
+            putStrLn $ "Saving " ++ show (length lines) ++ " lines to database..."
+            saveData lines
             
-        ["loaddata"] -> withErrorHandling "Error loading data" $ do
-            putStrLn "Downloading data..."
-            json <- downloadData
-            putStrLn "Parsing data..."
-            case parseLines json of
-                Left err -> putStrLn $ "Error parsing JSON: " ++ err
-                Right lines -> do
-                    putStrLn $ "Saving " ++ show (length lines) ++ " lines to database..."
-                    saveData lines
-                    
-                    -- Fetch stations for each line
-                    putStrLn "Fetching stations for each line (this might take a while)..."
-                    forM_ lines $ \line -> do
-                        putStrLn $ "Fetching stations for " ++ show (Types.name line)
-                        stationJson <- fetchStations (Types.id line)
-                        case parseStations stationJson of
-                            Left err -> putStrLn $ "Error parsing stations for line " ++ show (Types.name line) ++ ": " ++ err
-                            Right stations -> do
-                                saveStations (Types.id line) stations
-                                putStrLn $ "Saved " ++ show (length stations) ++ " stations."
-                                
-                    putStrLn "Data saved."
+            putStrLn "Fetching the stations details for each line -----"
+            forM_ lines $ \line -> do
+                putStrLn $ "Fetching the stations details for " ++ show (Types.name line)
+                stationJson <- fetchStations (Types.id line)
+                case parseStations stationJson of
+                    Left err -> putStrLn $ "Getting Error while parsing stations for line " ++ show (Types.name line) ++ ": " ++ err
+                    Right stations -> do
+                        saveStations (Types.id line) stations
+                        putStrLn $ "Saved " ++ show (length stations) ++ " stations."
+                        
+            putStrLn "Data saved."
 
 -- | Dump database content to JSON file
 handleDumpData :: IO ()
@@ -215,30 +231,54 @@ checkExit input = do
 resolveStation :: String -> IO String
 resolveStation input = do
     results <- searchStations input
-    case results of
-        [station] -> return (T.unpack $ Types.stationId station)
-        [] -> do
-            putStrLn "No matching stations found. Please try again."
-            putStr "Enter station name (or 'exit'): "
+    let sortedResults = sortBy (comparing Types.commonName) results
+    
+    if length sortedResults > 25
+        then do
+            putStrLn $ "Found " ++ show (length sortedResults) ++ " stations matching \"" ++ input ++ "\"."
+            putStr "Too many results. Show all? (y/n) or 'exit': "
             hFlush stdout
-            newInput <- getLine
-            checkExit newInput
-            resolveStation newInput
+            choice <- getLine
+            checkExit choice
+            if choice == "y" || choice == "yes"
+                then showStationList sortedResults input
+                else do
+                    putStrLn "Please refine your search."
+                    putStr "Enter station name (or 'exit'): "
+                    hFlush stdout
+                    newInput <- getLine
+                    checkExit newInput
+                    resolveStation newInput
+        else showStationList sortedResults input
 
-        stations -> do
-            putStrLn "Found matching stations:"
-            forM_ (zip [1..] stations) $ \(i, station) -> do
-                putStrLn $ show i ++ ". " ++ show (Types.commonName station) ++ " (" ++ show (Types.stationId station) ++ ")"
-            
-            putStr "Select a station (number), press enter to use input as is, or 'exit': "
-            hFlush stdout
-            selection <- getLine
-            checkExit selection
-            case readMaybe selection of
-                Just n | n > 0 && n <= length stations -> do
-                    let selected = stations !! (n - 1)
-                    return (T.unpack $ Types.stationId selected)
-                _ -> return input
+showStationList :: [Types.Station] -> String -> IO String
+showStationList stations originalInput = case stations of
+    [station] -> do
+        putStrLn $ "Selected station: " ++ show (Types.commonName station)
+        return (T.unpack $ Types.stationId station)
+    [] -> do
+        putStrLn "No matching stations found. Please try again."
+        putStr "Enter station name (or 'exit'): "
+        hFlush stdout
+        newInput <- getLine
+        checkExit newInput
+        resolveStation newInput
+    _ -> do
+        putStrLn "Found matching stations:"
+        forM_ (zip [1..] stations) $ \(i, station) -> do
+            putStrLn $ show i ++ ". " ++ show (Types.commonName station) ++ " (" ++ show (Types.stationId station) ++ ")"
+        
+        putStr "Select a station (number) or 'exit': "
+        hFlush stdout
+        selection <- getLine
+        checkExit selection
+        case readMaybe selection of
+            Just n | n > 0 && n <= length stations -> do
+                let selected = stations !! (n - 1)
+                return (T.unpack $ Types.stationId selected)
+            _ -> do
+                putStrLn "Invalid selection. Please select a number from the list."
+                showStationList stations originalInput
 
 selectModes :: IO (Maybe String)
 selectModes = do
@@ -255,12 +295,23 @@ selectModes = do
     input <- getLine
     checkExit input
     if null input
-        then return Nothing
+        then do
+            putStrLn "Selected: All Modes"
+            return Nothing
         else do
             let selections = map T.strip (T.splitOn (T.pack ",") (T.pack input))
-            let modes = map mapMode selections
-            return $ Just (T.unpack $ T.intercalate (T.pack ",") modes)
+            if all isValidSelection selections
+                then do
+                    let modes = map mapMode selections
+                    putStrLn $ "Selected: " ++ T.unpack (T.intercalate (T.pack ", ") selections)
+                    return $ Just (T.unpack $ T.intercalate (T.pack ",") modes)
+                else do
+                    putStrLn "Invalid selection. Please use numbers 1-7 (comma separated)."
+                    selectModes
   where
+    isValidSelection :: T.Text -> Bool
+    isValidSelection t = t `elem` map (T.pack . show) [1..7]
+
     mapMode :: T.Text -> T.Text
     mapMode t
         | t == T.pack "1" = T.pack "tube"
@@ -283,11 +334,21 @@ selectPreference = do
     input <- getLine
     checkExit input
     case input of
-        "1" -> return $ Just "leasttime"
-        "2" -> return $ Just "leastinterchange"
-        "3" -> return $ Just "leastwalking"
-        ""  -> return Nothing
-        _   -> return Nothing
+        "1" -> do
+            putStrLn "Selected: Fastest"
+            return $ Just "leasttime"
+        "2" -> do
+            putStrLn "Selected: Fewest Changes"
+            return $ Just "leastinterchange"
+        "3" -> do
+            putStrLn "Selected: Least Walking"
+            return $ Just "leastwalking"
+        ""  -> do
+            putStrLn "Selected: No Preference"
+            return Nothing
+        _   -> do
+            putStrLn "Invalid input, defaulting to: No Preference"
+            return Nothing
 
 
 
